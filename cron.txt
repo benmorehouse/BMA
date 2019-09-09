@@ -1,0 +1,124 @@
+package scheduler
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/chromedp/chromedp"
+	"github.com/gobuffalo/pop"
+	"github.com/machinebox/sdk-go/fakebox"
+	"github.com/overlooked-incorporated/backend/backoff"
+	"github.com/overlooked-incorporated/backend/scraper"
+	"github.com/overlooked-incorporated/backend/scraper/apnews"
+	"github.com/overlooked-incorporated/backend/scraper/bbc"
+	"github.com/overlooked-incorporated/backend/scraper/breitbart"
+	"github.com/overlooked-incorporated/backend/scraper/buzzfeed"
+	"github.com/overlooked-incorporated/backend/scraper/cbs"
+	"github.com/overlooked-incorporated/backend/scraper/cnn"
+	"github.com/overlooked-incorporated/backend/scraper/dailytrojan"
+	"github.com/overlooked-incorporated/backend/scraper/deduplicator"
+	"github.com/overlooked-incorporated/backend/scraper/espn"
+	"github.com/overlooked-incorporated/backend/scraper/fox"
+	"github.com/overlooked-incorporated/backend/scraper/images"
+	"github.com/overlooked-incorporated/backend/scraper/kcna"
+	"github.com/overlooked-incorporated/backend/scraper/latimes"
+	"github.com/overlooked-incorporated/backend/scraper/nbc"
+	"github.com/overlooked-incorporated/backend/scraper/nyt"
+	"github.com/overlooked-incorporated/backend/scraper/reuters"
+	"github.com/overlooked-incorporated/backend/scraper/rt"
+	"github.com/overlooked-incorporated/backend/scraper/sputnik"
+	"github.com/overlooked-incorporated/backend/scraper/techcrunch"
+
+	cron "gopkg.in/robfig/cron.v2"
+)
+
+// Scheduler schedules jobs to be run in time intervals.
+type Scheduler struct {
+	cron   *cron.Cron
+	log    *log.Logger
+	HTTP   *http.Client
+	chrome *chromedp.CDP
+	db     *pop.Connection
+}
+
+// Run starts the scheduler
+func (s *Scheduler) Run() {
+	s.cron.Start()
+	jobs := s.cron.Entries()
+	for _, job := range jobs {
+		s.log.Printf("job %v, next scheduled to run on: %v", job.ID, job.Next)
+		job.Job.Run()
+	}
+}
+
+// New creates new scheduler
+func New(logger *log.Logger, httpClient *http.Client, chrome *chromedp.CDP, db *pop.Connection, fakebox *fakebox.Client) *Scheduler {
+	retrier := backoff.NewDoubleTimeBackoff(20*time.Second, 5*time.Minute, 15)
+
+	cnn := cnn.New(chrome, httpClient, log.New(os.Stderr, "[CNN-SCRAPER]: ", log.Ldate|log.Ltime|log.Lshortfile), db, fakebox, retrier)
+	fox := fox.New(logger, httpClient, db, fakebox, retrier)
+	bbc := bbc.New(logger, httpClient, db, fakebox, retrier)
+	reuters := reuters.New(logger, httpClient, db, fakebox, retrier)
+	espn := espn.New(logger, httpClient, db, retrier)
+	dailytrojan := dailytrojan.New(logger, httpClient, db, fakebox, retrier)
+	nbc := nbc.New(logger, httpClient, db, fakebox, retrier)
+	apnews := apnews.New(logger, httpClient, db, fakebox, retrier)
+	nyt := nyt.New(logger, httpClient, db, fakebox, retrier)
+	techcrunch := techcrunch.New(logger, httpClient, db, fakebox, retrier)
+	latimes := latimes.New(logger, httpClient, db, fakebox, retrier)
+	sputnik := sputnik.New(logger, httpClient, db, fakebox, retrier)
+	breitbart := breitbart.New(logger, httpClient, db, fakebox, retrier)
+	rt := rt.New(logger, httpClient, db, fakebox, retrier)
+	kcna := kcna.New(logger, httpClient, db, fakebox, retrier)
+	cbs := cbs.New(logger, httpClient, db, fakebox, retrier)
+	buzzfeed := buzzfeed.New(logger, httpClient, db, fakebox, retrier)
+	deduplicator := deduplicator.New(logger, db)
+	images := images.New(logger, db)
+	scrapers := []scraper.Scraper{
+		dailytrojan,
+		espn,
+		reuters,
+		bbc,
+		fox,
+		cnn,
+		nbc,
+		apnews,
+		nyt,
+		latimes,
+		techcrunch,
+		rt,
+		sputnik,
+		breitbart,
+		kcna,
+		buzzfeed,
+		cbs,
+		deduplicator,
+		images,
+	}
+
+	c := cron.New()
+	interval := os.Getenv("SCRAPE_INTERVAL")
+	if interval == "" {
+		interval = "2h"
+	}
+
+	if _, err := c.AddFunc("@every "+interval, func() {
+		for _, scraper := range scrapers {
+			logger.Println("running", scraper.Version())
+			if err := scraper.Run(); err != nil {
+				logger.Println(err)
+			}
+		}
+	}); err != nil {
+		logger.Fatal(err)
+	}
+
+	return &Scheduler{
+		cron:   c,
+		log:    logger,
+		HTTP:   httpClient,
+		chrome: chrome,
+	}
+}
