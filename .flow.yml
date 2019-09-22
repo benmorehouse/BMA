@@ -6,6 +6,4 @@ default:
                 clear
 
                 cd ~/code/BMA
-
-                go build  -o /tmp/BMA .
-                /tmp/BMA
+                go build

@@ -5,6 +5,7 @@ import(
 	"strings"
 	"log"
 	"io/ioutil"
+	"flag"
 )
 
 type word struct{
@@ -13,12 +14,16 @@ type word struct{
 	lower string
 }
 
+func BMA(){
+	filePath := flag.String("path","", "Path of file to be changed")
+	fileExtension := flag.String("FE","","File extension for new file to be changed")
+	flag.Parse()
 
-func main(){
-	fmt.Print("Enter filepath:")
-	var filePath string
-	fmt.Scan(&filePath)
-	fileText , err := parseFile(filePath)
+	if *filePath == ""{
+		log.Fatal("No filepath entered")
+	}
+
+	fileText , err := parseFile(*filePath)
 	if err != nil{
 		log.Fatal(err)
 	}
@@ -62,10 +67,20 @@ func main(){
 		fmt.Println("There were ",instanceCount," times the word ",currentWord.original," came up")
 	}
 
-	//used to invoke user on language of the new file and the file exteion they want to have
-	newFilePath := filePath + getExtension()
+	// need to trim the filepath 
+
+	newFilePath := trimFilePath(*filePath) + *fileExtension
+
+	if *fileExtension == ""{
+		newFilePath = trimFilePath(*filePath) + getExtension()
+	}
+
 	err = ioutil.WriteFile(newFilePath,[]byte(newFile),0644)
+
 	if err != nil{
 		log.Fatal("couldnt do final write in path")
 	}
 }
+
+
+

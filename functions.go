@@ -130,3 +130,15 @@ func getFileExtension(_url string)(string, error){
 	return extensions ,err
 }
 
+func trimFilePath(input string)(string){
+	if input ==""{
+		return input
+	}
+	for i:=len(input)-1;i>=0;i--{
+		if input[i] == '.'{
+			return input[:i]
+		}
+	}
+	return ""
+}
+
