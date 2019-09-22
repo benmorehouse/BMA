@@ -2,69 +2,70 @@ package main
 
 import(
 	"fmt"
-	"os"
-	"bufio"
-	"flag"
 	"strings"
 	"log"
+	"io/ioutil"
 )
 
+type word struct{
+	original string
+	upper string
+	lower string
+}
+
+
 func main(){
-	fmt.Println("                  ***Welcome to Autofill***\n")
-	fmt.Println("/***********************************************************************/\n")
-	fmt.Println("This is a tool that will be used to parse through files and change the \nnames of the file that we are working on to a new file which will be a new scraper/etc.\n")
-	fmt.Println("/***********************************************************************/\n")
-	input := "buzzfeed"
-	currentWebsite := website{
+	fmt.Print("Enter filepath:")
+	var filePath string
+	fmt.Scan(&filePath)
+	fileText , err := parseFile(filePath)
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	fmt.Print("Enter desired word to replace:")
+	var input string
+	fmt.Scan(&input)
+
+	currentWord := word{
 		original: input,
 		upper: strings.ToUpper(input),
 		lower: strings.ToLower(input),
 	}
 
-	fmt.Print("Enter in the new website scraper : ")
+	fmt.Print("Entered new desired word:")
 	fmt.Scan(&input)
-	err := httpCheck(input)
 
-	if err !=nil{
-		fmt.Println("err:",err)
-		os.Exit(1)
-	}
-
-	f, err := os.Create(input + ".txt") // this is the file writer
-
-	if err !=nil{
-		fmt.Println("err:",err)
-		os.Exit(1)
-	}
-
-	newWebsite := website{
+	newWord := word{
 		original: input,
 	}
 
-	fptr := flag.String("filepath","template.txt","") // the file pointer needed to do os.Open()
-	flag.Parse()
-	file, err := os.Open(*fptr) // file is the returned value of os.open. It is what we read through 
-	if err != nil{
-		fmt.Println("error: file not able to be opened")
+	tempFileText := strings.Split(fileText, "\n") // will splitup into array of lines
+	instanceCount := 0
+	for i , val := range tempFileText{
+		line := strings.Split(val, " ")
+		for j , val2 := range line{
+			//make function that will scan all three instances of word
+			if strings.ToLower(val2) == currentWord.lower{
+				line[j] = newWord.original
+				instanceCount ++
+			}
+		}
+		newLine := strings.Join(line, " ")
+		tempFileText[i] = newLine
+	}
+	newFile := strings.Join(tempFileText, "\n")
+
+	if instanceCount == 0{
+		log.Fatal("No instance of the word \"",currentWord.original,"\" found")
+	}else{
+		fmt.Println("There were ",instanceCount," times the word ",currentWord.original," came up")
 	}
 
-	scan := bufio.NewScanner(file)
-	for scan.Scan(){ // we read in the string line by line  
-		// could scan through and instead just use the ones that we found 
-		temp := scan.Text() // this gives us each line
-		newstrings := currentWebsite.all_occurances(temp) // newstrings is essentially anything that matches
-		for i:=0;i<len(newstrings);i++{
-			temp = strings.Replace(temp,newstrings[i],newWebsite.original,-1)
-		}
-		temp+=string("\n")
-		// now we add old into new
-		if _, err := f.Write([]byte(temp)); err != nil {
-			log.Fatal(err)
-		}
+	//used to invoke user on language of the new file and the file exteion they want to have
+	newFilePath := filePath + getExtension()
+	err = ioutil.WriteFile(newFilePath,[]byte(newFile),0644)
+	if err != nil{
+		log.Fatal("couldnt do final write in path")
 	}
-		// essentially renames the file rename(old, new)
-		//use os.Getwd to get the rooted path
-	txtToGo(newWebsite.original)
-	// at this point we need to run the file moving because now we have a file to work with 
-	moveFile(newWebsite.original)
 }
